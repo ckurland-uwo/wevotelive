@@ -7,8 +7,8 @@
 	} = $props()
 
 	const p = [18, 25, 73, -22, 125, 30, 78, 57, 20, 51, 19, 46, 18, 25, 40, 14]
-	const v = [ 10,10, 10,  10,  10, 10, 10,  0,  0,  0,  0,  0,  0,  0,  0,  5]
-	let n: number[] = $state([])
+	const v = [10, 10, 10,  10,  10, 10, 10,  0,  0,  0,  0,  0,  0,  0,  0,  5]
+	let n: number[] = $state([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
 
 	function randomRange(min: number, max: number): number {
 		return Math.random() * (max - min) + min
@@ -18,12 +18,15 @@
 	}
 
 	$effect(()=>{
-		show;
-		
+		if (show) return		
 		for (let i = 0; i < p.length; i++) {
 			n[i] = p[i] + randomVariance(v[i])
 		}
 	})
+
+	for (let i = 0; i < p.length; i++) {
+		n[i] = p[i] + randomVariance(v[i])
+	}
 </script>
 
 {#if show}
@@ -44,7 +47,7 @@
 <style>
 	@keyframes draw {
 		from {
-			stroke-dashoffset: 100;
+			stroke-dashoffset: 99.9;
 		}
 		to {
 			stroke-dashoffset: 0;

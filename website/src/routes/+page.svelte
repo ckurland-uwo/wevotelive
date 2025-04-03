@@ -1,15 +1,15 @@
 <script lang="ts">
-	import Card from '$lib/components/Card.svelte';
+    import PollBubble from '$lib/components/PollBubble.svelte';
 import '$lib/css/global.css'
 </script>
 
 <main>
-	<Card>
+	<PollBubble>
 		<h1>Home Page</h1>
 		<p>Get started by hosting or joining a room.</p>
 		<a href="/host">Host</a>
 		<a href="/join">Join</a>
-	</Card>
+	</PollBubble>
 </main>
 
 

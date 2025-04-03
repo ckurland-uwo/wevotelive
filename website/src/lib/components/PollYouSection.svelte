@@ -25,7 +25,7 @@
 				<p class="label">Voted For</p>
 				<div class="side-letter" class:a={vote.votedA} class:b={!vote.votedA}>
 					<p>{vote.votedA ? "A" : "B"}</p>
-					{#if vote.votedA? aWon : bWon}
+					{#if (vote.votedA? aWon : bWon) && poll.revealed}
 						<div class="correct-sticker" style:--additional-rotation={rotationA}>Winner!</div>
 					{/if}
 				</div>
@@ -34,7 +34,7 @@
 				<p class="label">Predicted</p>
 				<div class="side-letter" class:a={vote.predictedA} class:b={!vote.predictedA}>
 					<p>{vote.predictedA ? "A" : "B"}</p>
-					{#if vote.predictedA? aWon : bWon}
+					{#if (vote.predictedA? aWon : bWon) && poll.revealed}
 						<div class="correct-sticker" style:--additional-rotation={rotationB}>Correct!</div>
 					{/if}
 				</div>
