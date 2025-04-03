@@ -1,0 +1,14 @@
+html {
+	height: 100%;
+}
+body {
+	margin: 0;
+	background: 
+		radial-gradient(200% 150px at 50% calc(100% - 100px), #c0cdff 50%, transparent),
+		linear-gradient(to top, #eef1ff 150px, transparent 500px),
+		linear-gradient(to bottom, #d8e0ff 200px, #c0cdff 500px)
+	;
+	background-attachment: fixed;
+
+	font-size: 16px;
+}
