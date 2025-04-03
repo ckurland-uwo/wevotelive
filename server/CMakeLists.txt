@@ -4,22 +4,26 @@ project(WebSocketTestServer)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Set the path to your IXWebSocket repository.
-# Here, we assume your directory structure is:
-# server/
-# ├── IXWebSocket/   <-- cloned IXWebSocket repository
-# ├── server.cpp
-# └── CMakeLists.txt
+# Base path to IXWebSocket source
 set(IXWS_PATH "${CMAKE_SOURCE_DIR}/IXWebSocket")
 
-# Include the IXWebSocket headers. Since the headers are in IXWebSocket/ixwebsocket,
-# we add the top-level folder so that #include <ixwebsocket/IXWebSocketServer.h> works.
+# Include the IXWebSocket headers
 include_directories(${IXWS_PATH})
 
-# Link to the IXWebSocket build output.
-link_directories(${IXWS_PATH}/build)
+# Choose the correct build output folder depending on platform
+if(WIN32)
+    set(IXWS_LIB_PATH "${IXWS_PATH}/build-win") # You said you already built it for Windows
+elseif(UNIX)
+    set(IXWS_LIB_PATH "${IXWS_PATH}/build-linux") # You’ll build this next on Ubuntu/WSL
+endif()
+
+link_directories(${IXWS_LIB_PATH})
 
 add_executable(server server.cpp)
 
-# Link against ixwebsocket, the Windows sockets library, and zlib.
-target_link_libraries(server ixwebsocket ws2_32 z)
+# Platform-specific linking
+if(WIN32)
+    target_link_libraries(server ixwebsocket ws2_32 z)
+elseif(UNIX)
+    target_link_libraries(server ixwebsocket z pthread)
+endif()

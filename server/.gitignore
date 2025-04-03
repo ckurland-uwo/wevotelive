@@ -1,5 +1,7 @@
 # Build files
 /server/build/
+/server/build-linux/
+/server/build-win/
 **/CMakeFiles/
 **/CMakeCache.txt
 **/cmake_install.cmake
