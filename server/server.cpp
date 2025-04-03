@@ -57,8 +57,8 @@ struct Poll
         description = newDescription;
         optionA = newOptionA;
         optionB = newOptionB;
-        predicitionsA = 0;
-        predicitionsB = 0;
+        predictionsA = 0;
+        predictionsB = 0;
         votesA = 0;
         votesB = 0;
         revealed = false;
@@ -69,8 +69,8 @@ struct Poll
     string description;
     string optionA;
     string optionB;
-    int predicitionsA;
-    int predicitionsB;
+    int predictionsA;
+    int predictionsB;
     int votesA;
     int votesB;
     bool revealed;
@@ -84,8 +84,8 @@ void to_json(json &j, const Poll &p)
         {"description", p.description},
         {"optionA", p.optionA},
         {"optionB", p.optionB},
-        {"predicitionsA", p.predicitionsA},
-        {"predicitionsB", p.predicitionsB},
+        {"predictionsA", p.predictionsA},
+        {"predictionsB", p.predictionsB},
         {"votesA", p.votesA},
         {"votesB", p.votesB},
         {"revealed", p.revealed}};
@@ -585,6 +585,14 @@ void registerHandlers()
     {
         string roomCode = msg["roomCode"];
         string identity = msg["identity"];
+        if (roomParticipantMap[roomCode].empty())
+        {
+            Message message = buildErrorMessage(ws, "invalid-roomCode", false); // dont retry as the room is wrong
+            message.priority = 0;
+            globalMessageQueue.push_back(message);
+            queueCond.notify_one();
+            return;
+        }
         roomParticipantMap[roomCode].insert(make_pair("participant", identity));
         createParticipantThread(ws, roomCode, identity);
     };
@@ -653,11 +661,11 @@ void registerHandlers()
 
         if (predictedA)
         {
-            it->predicitionsA++;
+            it->predictionsA++;
         }
         else
         {
-            it->predicitionsB++;
+            it->predictionsB++;
         }
 
         Message message = buildMessageForClient(ws, roomCode);

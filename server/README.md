@@ -50,16 +50,25 @@ pacman -Syu
 pacman -S mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-make mingw-w64-ucrt-x86_64-zlib
 ```
 
-### ✅ 3. Build the project
+### ✅ 3. Build IXWebSocket
 
 ```bash
-cd /c/Users/xrist/OneDrive/Desktop/GitHub/wevotelive/server
+cd ~/your/project/path/server/IXWebSocket
 mkdir build && cd build
 cmake .. -G "MinGW Makefiles" -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
 cmake --build .
 ```
 
-### ✅ 4. Run the server
+### ✅ 4. Build the project
+
+```bash
+cd ~/your/project/path/server
+mkdir build && cd build
+cmake .. -G "MinGW Makefiles" -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
+cmake --build .
+```
+
+### ✅ 5. Run the server
 
 ```bash
 ./server.exe
@@ -83,8 +92,16 @@ cd ~/your/project/path/server
 git clone https://github.com/machinezone/IXWebSocket.git
 ```
 
-### ✅ 3. Build everything
+### ✅ 3. Build IXWebSocket
 
+```bash
+cd ~/your/project/path/server/IXWebSocket
+mkdir build && cd build
+cmake ..
+make -j$(nproc)
+```
+
+### ✅ 4. Build everything
 ```bash
 cd ~/your/project/path/server
 mkdir build && cd build
@@ -92,7 +109,7 @@ cmake ..
 make -j$(nproc)
 ```
 
-### ✅ 4. Run the server
+### ✅ 5. Run the server
 
 ```bash
 ./server
@@ -105,9 +122,3 @@ make -j$(nproc)
 - This project uses `add_subdirectory()` to build IXWebSocket along with your server — no need to precompile anything.
 - On Linux, `pthread` and `zlib` are linked automatically.
 - On Windows, ensure you're using **UCRT64** toolchain in MSYS2.
-
----
-
-## 💬 Questions?
-
-Open an issue or reach out if you're having trouble building on your platform!
