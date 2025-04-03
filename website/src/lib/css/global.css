@@ -3,11 +3,24 @@ html {
 }
 body {
 	margin: 0;
-	background: 
+	/* background: 
 		radial-gradient(200% 150px at 50% calc(100% - 100px), #c0cdff 50%, transparent),
 		linear-gradient(to top, #eef1ff 150px, transparent 500px),
 		linear-gradient(to bottom, #d8e0ff 200px, #c0cdff 500px)
+	; */
+	--colorA: rgb(255, 246, 255);
+	--colorB: #ffffff;
+	--spacing: 0px;
+	--thickness: 5px;
+	background: 
+	repeating-linear-gradient(
+		var(--colorA) 0px,
+		var(--colorA) var(--thickness),
+		var(--colorB) calc(var(--thickness) + var(--spacing)),
+		var(--colorB) calc(var(--thickness) * 2 + var(--spacing))
+	)
 	;
+
 	background-attachment: fixed;
 
 	font-size: 16px;

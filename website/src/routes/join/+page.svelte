@@ -1,9 +1,12 @@
 <script lang="ts">
+    import { Communication } from '$lib/Communication.svelte';
 	import Card from '$lib/components/Card.svelte';
     import PollBubble from '$lib/components/PollBubble.svelte';
     import PollDivider from '$lib/components/PollDivider.svelte';
     import PollHeader from '$lib/components/PollHeader.svelte';
     import PollPredictionSegment from '$lib/components/PollPredictionSegment.svelte';
+    import PollVoteCard from '$lib/components/PollVoteCard.svelte';
+    import PollYouSection from '$lib/components/PollYouSection.svelte';
 import '$lib/css/global.css'
 	import type { PageData } from './$types';
 
@@ -11,10 +14,10 @@ import '$lib/css/global.css'
 </script>
 
 <main>
-	<Card>
+	<!-- <Card>
 		<h1>Hello!</h1>
 		<p>This is a card.</p>
-	</Card>
+	</Card> -->
 	<PollBubble>
 		<PollHeader poll={{
 			id: "...",
@@ -29,6 +32,19 @@ import '$lib/css/global.css'
 			revealed: false
 
 		}} />
+		<PollVoteCard poll={{
+			id: "...",
+			question: "Which is better?",
+			description: "description",
+			optionA: "iCloud+",
+			optionB: "Google Business Profile Manager",
+			votesA: 0,
+			votesB: 0,
+			predictionsA: 0,
+			predictionsB: 0,
+			revealed: false
+
+		}} communication={new Communication()}/>
 		<PollDivider/>
 		<PollPredictionSegment poll={{
 			id: "...",
@@ -43,6 +59,7 @@ import '$lib/css/global.css'
 			revealed: false
 		}}
 		/>
+		<PollDivider/>
 	</PollBubble>
 	<PollBubble>
 		<PollHeader poll={{
@@ -71,6 +88,19 @@ import '$lib/css/global.css'
 			predictionsB: 21436,
 			revealed: true
 		}}/>
+		<PollDivider/>
+		<PollYouSection poll={{
+			id: "...",
+			question: "Which is better?",
+			description: "description",
+			optionA: "iCloud+",
+			optionB: "Google Business Profile Manager",
+			votesA: 87434,
+			votesB: 54239,
+			predictionsA: 43278,
+			predictionsB: 21436,
+			revealed: true
+		}} vote={{predictedA: true, votedA: false}}/>
 	</PollBubble>
 	<PollBubble>
 		<PollHeader poll={{
@@ -83,7 +113,7 @@ import '$lib/css/global.css'
 			votesB: 67823,
 			predictionsA: 14373,
 			predictionsB: 51436,
-			revealed: true
+			revealed: false
 		}} />
 		<PollDivider/>
 		<PollPredictionSegment poll={{
@@ -96,7 +126,7 @@ import '$lib/css/global.css'
 			votesB: 67823,
 			predictionsA: 59925,
 			predictionsB: 23231,
-			revealed: true
+			revealed: false
 		}}/>
 		<PollDivider/>
 	</PollBubble>

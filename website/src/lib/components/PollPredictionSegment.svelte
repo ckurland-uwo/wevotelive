@@ -16,7 +16,7 @@
 	const predictionPercentBTruncated = $derived(predictionPercentB.toFixed(1))
 </script>
 
-<section class:revealed={poll.revealed} style={`--predictionsA: ${predictionPercentA}%; --predictionsB: ${predictionPercentB}%`}>
+<section class:revealed={poll.predictionsA || poll.predictionsB} style={`--predictionsA: ${predictionPercentA}%; --predictionsB: ${predictionPercentB}%`}>
 	<div class="background">
 		<div class="a"></div>
 		<div class="center"></div>
@@ -60,6 +60,8 @@
 	section {
 		position: relative;
 		padding: 10px 20px;
+		background-color: rgba(0, 0, 0, 0.297);
+		
 	}
 	.predictions {
 		text-align: center;
@@ -183,7 +185,7 @@
 
 		transition: grid-template-columns 0.3s ease;
 
-		filter: blur(10px);
+		filter: blur(50px);
 	}
 	.background .a {
 		background-color: hsl(312, 74%, 26%);
@@ -217,6 +219,11 @@
 		}
 		.results-segment {
 			grid-column: span 2;
+			grid-template-columns: 1fr;
+		}
+	}
+	@media (max-width: 375px) {
+		.options-display {
 			grid-template-columns: 1fr;
 		}
 	}

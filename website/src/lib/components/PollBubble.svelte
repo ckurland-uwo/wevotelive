@@ -16,11 +16,13 @@
 
 		backdrop-filter: blur(20px);
 
-		background-color: hsla(261, 100%, 89%, 0.2);
+		/* background-color: hsla(261, 100%, 89%, 0.2); */
 
 		display: grid;
 
 		color: hsl(264, 51%, 19%);
+
+		box-shadow: 0px 0px 4px 0px rgba(0, 0, 0, 0.113);
 	}
 	.outer::after {
 		content: '';
@@ -28,13 +30,8 @@
 		inset: 0;
 
 		border-radius: inherit;
-		box-shadow: 
-		0 0 3px hsla(0, 0%, 0%, 0.1),
-			2px 4px 4px 0px rgba(255,255,255,0.8) inset,
-			0px 0px 4px 0px hsla(261, 94%, 79%, 1) inset
-		;
 
-		/* border: 2px solid rgba(210, 186, 255, 0.468); */
+		border: 2px solid rgba(255, 255, 255, 0.767);
 
 		pointer-events: none;
 	}

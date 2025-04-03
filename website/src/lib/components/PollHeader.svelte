@@ -190,7 +190,7 @@
 
 		transition: grid-template-columns 0.3s ease;
 
-		filter: blur(10px);
+		filter: blur(100px);
 	}
 	.background .a {
 		background-color: hsl(324, 100%, 86%);
