@@ -124,7 +124,7 @@ struct ConnectionThreadInfo
                          const string &identity,
                          const string &roomCode,
                          shared_ptr<ix::WebSocket> socket)
-        : type(type), identity(identity), roomCode(roomCode), socket(socket)
+        : type(type), identity(identity), roomCode(roomCode), socket(socket), running(true)
     {
     }
 
@@ -136,6 +136,7 @@ struct ConnectionThreadInfo
     deque<Message> personalQueue;
     condition_variable personalCond;
     mutex personalMutex;
+    bool running;
 };
 
 struct Message
@@ -309,9 +310,12 @@ void createRoomExpiryThread()
                             print("[ERROR] Unknown exception while sending room-closed error");
                         }
 
+                        it->second->running = false;
+                        it->second->personalCond.notify_all();
+
                         if (it->second->threadHandle.joinable())
                         {
-                            it->second->threadHandle.detach();
+                            it->second->threadHandle.join();
                         }
 
                         it = allConnectionThreads.erase(it);
@@ -343,9 +347,11 @@ void repairHostThread(shared_ptr<ix::WebSocket> newSocket, ConnectionThreadInfo 
     auto oldSocket = oldCTI.socket;
     oldCTI.socket = newSocket;
 
+    oldCTI.running = false;
+    oldCTI.personalCond.notify_all();
     if (oldCTI.threadHandle.joinable())
     {
-        oldCTI.threadHandle.detach();
+        oldCTI.threadHandle.join();
     }
 
     oldCTI.threadHandle = thread([cti_ptr = &oldCTI]()
@@ -353,7 +359,13 @@ void repairHostThread(shared_ptr<ix::WebSocket> newSocket, ConnectionThreadInfo 
             while (true)
             {
             unique_lock<mutex> lock(cti_ptr->personalMutex);
-            cti_ptr->personalCond.wait(lock, [cti_ptr]() { return !cti_ptr->personalQueue.empty(); });
+            cti_ptr->personalCond.wait(lock, [cti_ptr]() {
+                return !cti_ptr->personalQueue.empty() || !cti_ptr->running;
+            });
+            if (!cti_ptr->running)
+            {
+                break;
+            }
 
             auto msg = cti_ptr->personalQueue.front();
             cti_ptr->personalQueue.pop_front();
@@ -403,7 +415,13 @@ void createHostThread(shared_ptr<ix::WebSocket> socket, const string &identity)
                                    {
         while (true) {
             unique_lock<mutex> lock(cti_ptr->personalMutex);
-            cti_ptr->personalCond.wait(lock, [cti_ptr]() { return !cti_ptr->personalQueue.empty(); });
+            cti_ptr->personalCond.wait(lock, [cti_ptr]() {
+                return !cti_ptr->personalQueue.empty() || !cti_ptr->running;
+            });
+            if (!cti_ptr->running)
+            {
+                break;
+            }
     
             auto msg = cti_ptr->personalQueue.front();
             cti_ptr->personalQueue.pop_front();
@@ -428,9 +446,11 @@ void repairParticipantThread(shared_ptr<ix::WebSocket> newSocket, ConnectionThre
     auto oldSocket = oldCTI.socket;
     oldCTI.socket = newSocket;
 
+    oldCTI.running = false;
+    oldCTI.personalCond.notify_all();
     if (oldCTI.threadHandle.joinable())
     {
-        oldCTI.threadHandle.detach();
+        oldCTI.threadHandle.join();
     }
 
     oldCTI.threadHandle = thread([cti_ptr = &oldCTI]()
@@ -438,7 +458,13 @@ void repairParticipantThread(shared_ptr<ix::WebSocket> newSocket, ConnectionThre
             while (true)
             {
             unique_lock<mutex> lock(cti_ptr->personalMutex);
-            cti_ptr->personalCond.wait(lock, [cti_ptr]() { return !cti_ptr->personalQueue.empty(); });
+            cti_ptr->personalCond.wait(lock, [cti_ptr]() {
+                return !cti_ptr->personalQueue.empty() || !cti_ptr->running;
+            });
+            if (!cti_ptr->running)
+            {
+                break;
+            }
 
             auto msg = cti_ptr->personalQueue.front();
             cti_ptr->personalQueue.pop_front();
@@ -484,7 +510,13 @@ void createParticipantThread(shared_ptr<ix::WebSocket> socket, const string &roo
                                    {
         while (true) {
             unique_lock<mutex> lock(cti_ptr->personalMutex);
-            cti_ptr->personalCond.wait(lock, [cti_ptr]() { return !cti_ptr->personalQueue.empty(); });
+            cti_ptr->personalCond.wait(lock, [cti_ptr]() {
+                return !cti_ptr->personalQueue.empty() || !cti_ptr->running;
+            });
+            if (!cti_ptr->running)
+            {
+                break;
+            }
     
             auto msg = cti_ptr->personalQueue.front();
             cti_ptr->personalQueue.pop_front();
