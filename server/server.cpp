@@ -16,10 +16,6 @@
 
 #include "json.hpp"
 
-// TODO:
-// check duplicarte ids
-// fix threads
-
 using json = nlohmann::json;
 
 using namespace std;
@@ -60,9 +56,9 @@ string generateRandomID()
 
 struct Poll
 {
-    Poll(const string &newQuestion, const string &newDescription, const string &newOptionA, const string &newOptionB)
-    {
-        id = generateRandomID();
+    Poll(const string &pollId, const string &newQuestion, const string &newDescription, const string &newOptionA, const string &newOptionB)
+   {
+       id = pollId;
         question = newQuestion;
         description = newDescription;
         optionA = newOptionA;
@@ -156,6 +152,43 @@ unordered_map<shared_ptr<ix::WebSocket>, unique_ptr<ConnectionThreadInfo>> allCo
 unordered_map<string, unordered_map<string, unordered_map<string, UserVote>>> allVotes;
 //<roomId, <identity, <pollId, uservote>>>
 
+string generateUniqueRoomID() {
+    string id;
+    do {
+        id = generateRandomID();
+    } while (roomParticipantMap.find(id) != roomParticipantMap.end() ||
+             allPolls.find(id) != allPolls.end() ||
+             expiringRooms.find(id) != expiringRooms.end());
+    return id;
+}
+
+string generateUniquePollID(const string &roomCode) {
+    string id;
+    bool collision;
+    do {
+        id = generateRandomID();
+        collision = false;
+        if (allPolls.find(roomCode) != allPolls.end()) {
+            for (const auto &poll : allPolls[roomCode]) {
+                if (poll.id == id) {
+                    collision = true;
+                    break;
+                }
+            }
+        }
+    } while (collision);
+    return id;
+}
+
+string generateUniqueSessionID() {
+    string id;
+    while(id.length() < 16){
+    string temp = generateRandomID();
+    id += temp;
+    }
+    return (id);
+}
+
 Message buildErrorMessage(shared_ptr<ix::WebSocket> ws, const string &error, const bool &retry)
 {
     Message message;
@@ -199,18 +232,51 @@ void onMessage(shared_ptr<ix::WebSocket> webSocket, const ix::WebSocketMessagePt
         else
         {
             string type = it->second->type;
+            string roomCode = it->second->roomCode;
+            string identity = it->second->identity;
             if (type == "host")
             {
-                print("The host " + it->second->identity + " of room " + it->second->roomCode + " has disconnected.");
+                print("A host session for " + identity + " in room " + roomCode + " has disconnected.");
+
+                it->second->running = false;
+                it->second->personalCond.notify_all();
+                if (it->second->threadHandle.joinable())
+                {
+                    it->second->threadHandle.join();
+                }
+                allConnectionThreads.erase(it);
+
+                bool otherHostSessions = false;
+                {
+                    lock_guard<mutex> lock(wsQueueMutex);
+                    for (auto &pair : allConnectionThreads)
+                    {
+                        if (pair.second->roomCode == roomCode &&
+                            pair.second->type == "host" &&
+                            pair.second->identity == identity)
+                        {
+                            otherHostSessions = true;
+                            break;
+                        }
+                    }
+                }
+                if (!otherHostSessions)
                 {
                     lock_guard<mutex> lock(roomExpiryMutex);
-                    expiringRooms[it->second->roomCode] = chrono::steady_clock::now() + chrono::minutes(1);
+                    expiringRooms[roomCode] = chrono::steady_clock::now() + chrono::minutes(1);
+                    print("No more host sessions remain for room " + roomCode + ". Room is expiring in 1 minute.");
                 }
-                print("Room " + it->second->roomCode + " is expiring in 1 minute.");
             }
-            else
+            else 
             {
-                print("The participant " + it->second->identity + " of room " + it->second->roomCode + " has disconnected.");
+                print("The participant " + identity + " of room " + roomCode + " has disconnected.");
+                it->second->running = false;
+                it->second->personalCond.notify_all();
+                if (it->second->threadHandle.joinable())
+                {
+                    it->second->threadHandle.join();
+                }
+                allConnectionThreads.erase(it);
             }
         }
     }
@@ -337,102 +403,84 @@ void createRoomExpiryThread()
     }
 }
 
-void repairHostThread(shared_ptr<ix::WebSocket> newSocket, ConnectionThreadInfo &oldCTI)
-{
-    {
-        lock_guard<mutex> lock(roomExpiryMutex);
-        expiringRooms.erase(oldCTI.roomCode);
-    }
-
-    auto oldSocket = oldCTI.socket;
-    oldCTI.socket = newSocket;
-
-    oldCTI.running = false;
-    oldCTI.personalCond.notify_all();
-    if (oldCTI.threadHandle.joinable())
-    {
-        oldCTI.threadHandle.join();
-    }
-
-    oldCTI.threadHandle = thread([cti_ptr = &oldCTI]()
-                                 {
-            while (true)
-            {
-            unique_lock<mutex> lock(cti_ptr->personalMutex);
-            cti_ptr->personalCond.wait(lock, [cti_ptr]() {
-                return !cti_ptr->personalQueue.empty() || !cti_ptr->running;
-            });
-            if (!cti_ptr->running)
-            {
-                break;
-            }
-
-            auto msg = cti_ptr->personalQueue.front();
-            cti_ptr->personalQueue.pop_front();
-            lock.unlock();
-
-            cti_ptr->socket->send(msg.payload.dump());
-
-            print("[Thread] Reconnected host thread for " + cti_ptr->identity + " in room " + cti_ptr->roomCode);
-            } });
-
-    {
-        lock_guard<mutex> lock(wsQueueMutex);
-        allConnectionThreads[newSocket] = move(allConnectionThreads[oldSocket]);
-        allConnectionThreads.erase(oldSocket);
-    }
-
-    newSocket->send(json{
-        {"polls", allPolls[oldCTI.roomCode]},
-        {"type", "host"},
-        {"hostingRoomCode", oldCTI.roomCode}}
-                        .dump());
-}
-
 void createHostThread(shared_ptr<ix::WebSocket> socket, const string &identity)
 {
-    auto it = find_if(allConnectionThreads.begin(), allConnectionThreads.end(),
-                      [&](const auto &pair)
-                      {
-                          return pair.second->identity == identity;
-                      });
-
-    if (it != allConnectionThreads.end() && it->second->type == "host")
+    string roomCode;
+    bool roomExists = false;
     {
-        auto &threadInfo = *it->second;
-        print("Found host in room: " + threadInfo.roomCode);
-        repairHostThread(socket, threadInfo);
-        return;
+        lock_guard<mutex> lock(roomExpiryMutex);
+        for (const auto &entry : roomParticipantMap)
+        {
+            auto it = entry.second.find("host");
+            if (it != entry.second.end() && it->second == identity)
+            {
+                roomCode = entry.first;
+                roomExists = true;
+                break;
+            }
+        }
     }
-    string roomCode = generateRandomID();
-    roomParticipantMap[roomCode]["host"] = identity;
-    allPolls[roomCode] = {};
+
+    if (!roomExists)
+    {
+        lock_guard<mutex> lock(wsQueueMutex);
+        for (const auto &pair : allConnectionThreads)
+        {
+            if (pair.second->identity == identity && pair.second->type == "host")
+            {
+                roomCode = pair.second->roomCode;
+                roomExists = true;
+                break;
+            }
+        }
+    }
+
+    if (roomExists && expiringRooms.find(roomCode) != expiringRooms.end())
+    {
+        lock_guard<mutex> lock(roomExpiryMutex);
+        expiringRooms.erase(roomCode);
+        print("Host " + identity + " for room " + roomCode + " has rejoined, cancelling room expiry.");
+    }
+    
+    if (!roomExists)
+    {
+        roomCode = generateUniqueRoomID();
+        roomParticipantMap[roomCode]["host"] = identity;
+        allPolls[roomCode] = {};
+        print("No existing room found. Creating new room " + roomCode + " for host " + identity);
+    }
+    
+    string sessionId = generateUniqueSessionID();
 
     auto cti = make_unique<ConnectionThreadInfo>("host", identity, roomCode, socket);
     ConnectionThreadInfo *cti_ptr = cti.get();
 
     cti_ptr->threadHandle = thread([cti_ptr]()
                                    {
-        while (true) {
+        while (true)
+        {
             unique_lock<mutex> lock(cti_ptr->personalMutex);
-            cti_ptr->personalCond.wait(lock, [cti_ptr]() {
+            cti_ptr->personalCond.wait(lock, [cti_ptr]()
+            {
                 return !cti_ptr->personalQueue.empty() || !cti_ptr->running;
             });
             if (!cti_ptr->running)
-            {
                 break;
-            }
-    
+
             auto msg = cti_ptr->personalQueue.front();
             cti_ptr->personalQueue.pop_front();
             lock.unlock();
-    
+
             cti_ptr->socket->send(msg.payload.dump());
-    
             print("[Thread] Sent to " + cti_ptr->identity + " (" + cti_ptr->type + ") in room " + cti_ptr->roomCode);
         } });
-    allConnectionThreads[socket] = move(cti);
-    print("[Thread] Created host thread for " + identity + " in room " + roomCode);
+
+    {
+        lock_guard<mutex> lock(wsQueueMutex);
+        allConnectionThreads[socket] = move(cti);
+    }
+
+    print("[Thread] Created new host session for " + identity + " (session " + sessionId + ") in room " + roomCode);
 
     socket->send(json{
         {"polls", allPolls[roomCode]},
@@ -441,68 +489,11 @@ void createHostThread(shared_ptr<ix::WebSocket> socket, const string &identity)
                      .dump());
 }
 
-void repairParticipantThread(shared_ptr<ix::WebSocket> newSocket, ConnectionThreadInfo &oldCTI)
-{
-    auto oldSocket = oldCTI.socket;
-    oldCTI.socket = newSocket;
-
-    oldCTI.running = false;
-    oldCTI.personalCond.notify_all();
-    if (oldCTI.threadHandle.joinable())
-    {
-        oldCTI.threadHandle.join();
-    }
-
-    oldCTI.threadHandle = thread([cti_ptr = &oldCTI]()
-                                 {
-            while (true)
-            {
-            unique_lock<mutex> lock(cti_ptr->personalMutex);
-            cti_ptr->personalCond.wait(lock, [cti_ptr]() {
-                return !cti_ptr->personalQueue.empty() || !cti_ptr->running;
-            });
-            if (!cti_ptr->running)
-            {
-                break;
-            }
-
-            auto msg = cti_ptr->personalQueue.front();
-            cti_ptr->personalQueue.pop_front();
-            lock.unlock();
-
-            cti_ptr->socket->send(msg.payload.dump());
-
-            print("[Thread] Reconnected host thread for " + cti_ptr->identity + " in room " + cti_ptr->roomCode);
-            } });
-
-    {
-        lock_guard<mutex> lock(wsQueueMutex);
-        allConnectionThreads[newSocket] = move(allConnectionThreads[oldSocket]);
-        allConnectionThreads.erase(oldSocket);
-    }
-
-    newSocket->send(json{
-        {"polls", allPolls[oldCTI.roomCode]},
-        {"type", "participant"},
-        {"votes", allVotes[oldCTI.roomCode][oldCTI.identity]}}
-                        .dump());
-}
-
 void createParticipantThread(shared_ptr<ix::WebSocket> socket, const string &roomCode, const string &identity)
 {
-    auto it = find_if(allConnectionThreads.begin(), allConnectionThreads.end(),
-                      [&](const auto &pair)
-                      {
-                          return pair.second->identity == identity;
-                      });
+    string sessionId = generateUniqueSessionID();
+    string compositeId = identity + "_" + sessionId;
 
-    if (it != allConnectionThreads.end())
-    {
-        auto &threadInfo = *it->second;
-        print("Found participant in room: " + threadInfo.roomCode);
-        repairParticipantThread(socket, threadInfo);
-        return;
-    }
     auto cti = make_unique<ConnectionThreadInfo>("participant", identity, roomCode, socket);
     ConnectionThreadInfo *cti_ptr = cti.get();
 
@@ -514,20 +505,22 @@ void createParticipantThread(shared_ptr<ix::WebSocket> socket, const string &roo
                 return !cti_ptr->personalQueue.empty() || !cti_ptr->running;
             });
             if (!cti_ptr->running)
-            {
                 break;
-            }
-    
+
             auto msg = cti_ptr->personalQueue.front();
             cti_ptr->personalQueue.pop_front();
             lock.unlock();
-    
+
             cti_ptr->socket->send(msg.payload.dump());
-    
             print("[Thread] Sent to " + cti_ptr->identity + " (" + cti_ptr->type + ") in room " + cti_ptr->roomCode);
         } });
-    allConnectionThreads[socket] = move(cti);
-    print("[Thread] Created participant thread for " + identity + " in room " + roomCode);
+
+    {
+        lock_guard<mutex> lock(wsQueueMutex);
+        allConnectionThreads[socket] = move(cti);
+    }
+
+    print("[Thread] Created new participant session for " + identity + " (session " + sessionId + ") in room " + roomCode);
 
     socket->send(json{
         {"polls", allPolls[roomCode]},
@@ -613,7 +606,7 @@ void registerHandlers()
             queueCond.notify_one();
             return;
         }
-        roomParticipantMap[roomCode].insert(make_pair("participant", identity));
+        roomParticipantMap[roomCode][identity] = identity;
         createParticipantThread(ws, roomCode, identity);
     };
 
@@ -727,7 +720,8 @@ void registerHandlers()
             return;
         }
 
-        Poll createdPoll = Poll(question, description, optionA, optionB);
+        string pollId = generateUniquePollID(roomCode);
+        Poll createdPoll = Poll(pollId,question, description, optionA, optionB);
         allPolls[roomCode].push_back(createdPoll);
 
         Message message = buildMessageForClient(ws, roomCode);
