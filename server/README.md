@@ -63,7 +63,7 @@ cmake --build .
 
 ```bash
 cd ~/your/project/path/server
-mkdir build && cd build
+mkdir build-win && cd build-win
 cmake .. -G "MinGW Makefiles" -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
 cmake --build .
 ```
@@ -104,7 +104,7 @@ make -j$(nproc)
 ### ✅ 4. Build everything
 ```bash
 cd ~/your/project/path/server
-mkdir build && cd build
+mkdir build-linux && cd build-linux
 cmake ..
 make -j$(nproc)
 ```
