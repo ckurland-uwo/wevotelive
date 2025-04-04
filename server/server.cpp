@@ -21,7 +21,7 @@ using json = nlohmann::json;
 using namespace std;
 
 mutex g_coutMutex;
-mutex roomExpiryMutex;
+mutex globalStorageMutex;
 
 unordered_map<string, chrono::steady_clock::time_point> expiringRooms;
 
@@ -57,8 +57,8 @@ string generateRandomID()
 struct Poll
 {
     Poll(const string &pollId, const string &newQuestion, const string &newDescription, const string &newOptionA, const string &newOptionB)
-   {
-       id = pollId;
+    {
+        id = pollId;
         question = newQuestion;
         description = newDescription;
         optionA = newOptionA;
@@ -152,27 +152,44 @@ unordered_map<shared_ptr<ix::WebSocket>, unique_ptr<ConnectionThreadInfo>> allCo
 unordered_map<string, unordered_map<string, unordered_map<string, UserVote>>> allVotes;
 //<roomId, <identity, <pollId, uservote>>>
 
-string generateUniqueRoomID() {
+string generateUniqueRoomID()
+{
     string id;
-    do {
+    while (true)
+    {
         id = generateRandomID();
-    } while (roomParticipantMap.find(id) != roomParticipantMap.end() ||
-             allPolls.find(id) != allPolls.end() ||
-             expiringRooms.find(id) != expiringRooms.end());
+        {
+            lock_guard<mutex> lock(globalStorageMutex);
+            if (roomParticipantMap.find(id) == roomParticipantMap.end() &&
+                allPolls.find(id) == allPolls.end() &&
+                expiringRooms.find(id) == expiringRooms.end())
+            {
+                break;
+            }
+        }
+    }
     return id;
 }
 
-string generateUniquePollID(const string &roomCode) {
+string generateUniquePollID(const string &roomCode)
+{
     string id;
     bool collision;
-    do {
+    do
+    {
         id = generateRandomID();
         collision = false;
-        if (allPolls.find(roomCode) != allPolls.end()) {
-            for (const auto &poll : allPolls[roomCode]) {
-                if (poll.id == id) {
-                    collision = true;
-                    break;
+        {
+            lock_guard<mutex> lock(globalStorageMutex);
+            if (allPolls.find(roomCode) != allPolls.end())
+            {
+                for (const auto &poll : allPolls[roomCode])
+                {
+                    if (poll.id == id)
+                    {
+                        collision = true;
+                        break;
+                    }
                 }
             }
         }
@@ -180,11 +197,13 @@ string generateUniquePollID(const string &roomCode) {
     return id;
 }
 
-string generateUniqueSessionID() {
+string generateUniqueSessionID()
+{
     string id;
-    while(id.length() < 16){
-    string temp = generateRandomID();
-    id += temp;
+    while (id.length() < 16)
+    {
+        string temp = generateRandomID();
+        id += temp;
     }
     return (id);
 }
@@ -262,12 +281,12 @@ void onMessage(shared_ptr<ix::WebSocket> webSocket, const ix::WebSocketMessagePt
                 }
                 if (!otherHostSessions)
                 {
-                    lock_guard<mutex> lock(roomExpiryMutex);
+                    lock_guard<mutex> lock(globalStorageMutex);
                     expiringRooms[roomCode] = chrono::steady_clock::now() + chrono::minutes(1);
                     print("No more host sessions remain for room " + roomCode + ". Room is expiring in 1 minute.");
                 }
             }
-            else 
+            else
             {
                 print("The participant " + identity + " of room " + roomCode + " has disconnected.");
                 it->second->running = false;
@@ -334,11 +353,10 @@ void createRoomExpiryThread()
     {
         this_thread::sleep_for(chrono::seconds(1));
         auto now = chrono::steady_clock::now();
-
         vector<string> toRemove;
 
         {
-            lock_guard<mutex> lock(roomExpiryMutex);
+            lock_guard<mutex> lock(globalStorageMutex);
             for (auto &[room, expiryTime] : expiringRooms)
             {
                 if (now >= expiryTime)
@@ -351,11 +369,14 @@ void createRoomExpiryThread()
         for (const auto &room : toRemove)
         {
             {
-                lock_guard<mutex> lock(wsQueueMutex);
+                lock_guard<mutex> lock(globalStorageMutex);
                 allPolls.erase(room);
                 roomParticipantMap.erase(room);
                 allVotes.erase(room);
-
+            }
+            vector<thread> threadsToJoin;
+            {
+                lock_guard<mutex> lock(wsQueueMutex);
                 for (auto it = allConnectionThreads.begin(); it != allConnectionThreads.end();)
                 {
                     if (it->second->roomCode == room)
@@ -381,9 +402,8 @@ void createRoomExpiryThread()
 
                         if (it->second->threadHandle.joinable())
                         {
-                            it->second->threadHandle.join();
+                            threadsToJoin.push_back(move(it->second->threadHandle));
                         }
-
                         it = allConnectionThreads.erase(it);
                     }
                     else
@@ -392,11 +412,14 @@ void createRoomExpiryThread()
                     }
                 }
             }
+            for (auto &t : threadsToJoin)
             {
-                lock_guard<mutex> lock(roomExpiryMutex);
-                if (expiringRooms.count(room) == 0)
-                    continue;
-                expiringRooms.erase(room);
+                t.join();
+            }
+            {
+                lock_guard<mutex> lock(globalStorageMutex);
+                if (expiringRooms.count(room) > 0)
+                    expiringRooms.erase(room);
             }
             print("Room " + room + " has expired and has been deleted.");
         }
@@ -408,7 +431,7 @@ void createHostThread(shared_ptr<ix::WebSocket> socket, const string &identity)
     string roomCode;
     bool roomExists = false;
     {
-        lock_guard<mutex> lock(roomExpiryMutex);
+        lock_guard<mutex> lock(globalStorageMutex);
         for (const auto &entry : roomParticipantMap)
         {
             auto it = entry.second.find("host");
@@ -435,21 +458,27 @@ void createHostThread(shared_ptr<ix::WebSocket> socket, const string &identity)
         }
     }
 
-    if (roomExists && expiringRooms.find(roomCode) != expiringRooms.end())
+    if (roomExists)
     {
-        lock_guard<mutex> lock(roomExpiryMutex);
-        expiringRooms.erase(roomCode);
-        print("Host " + identity + " for room " + roomCode + " has rejoined, cancelling room expiry.");
+        lock_guard<mutex> lock(globalStorageMutex);
+        if (expiringRooms.find(roomCode) != expiringRooms.end())
+        {
+            expiringRooms.erase(roomCode);
+            print("Host " + identity + " for room " + roomCode + " has rejoined, cancelling room expiry.");
+        }
     }
-    
+
     if (!roomExists)
     {
         roomCode = generateUniqueRoomID();
-        roomParticipantMap[roomCode]["host"] = identity;
-        allPolls[roomCode] = {};
+        {
+            lock_guard<mutex> lock(globalStorageMutex);
+            roomParticipantMap[roomCode]["host"] = identity;
+            allPolls[roomCode] = {};
+        }
         print("No existing room found. Creating new room " + roomCode + " for host " + identity);
     }
-    
+
     string sessionId = generateUniqueSessionID();
 
     auto cti = make_unique<ConnectionThreadInfo>("host", identity, roomCode, socket);
@@ -482,11 +511,14 @@ void createHostThread(shared_ptr<ix::WebSocket> socket, const string &identity)
 
     print("[Thread] Created new host session for " + identity + " (session " + sessionId + ") in room " + roomCode);
 
-    socket->send(json{
-        {"polls", allPolls[roomCode]},
-        {"type", "host"},
-        {"hostingRoomCode", roomCode}}
-                     .dump());
+    {
+        lock_guard<mutex> lock(globalStorageMutex);
+        socket->send(json{
+            {"polls", allPolls[roomCode]},
+            {"type", "host"},
+            {"hostingRoomCode", roomCode}}
+                         .dump());
+    }
 }
 
 void createParticipantThread(shared_ptr<ix::WebSocket> socket, const string &roomCode, const string &identity)
@@ -522,11 +554,14 @@ void createParticipantThread(shared_ptr<ix::WebSocket> socket, const string &roo
 
     print("[Thread] Created new participant session for " + identity + " (session " + sessionId + ") in room " + roomCode);
 
-    socket->send(json{
-        {"polls", allPolls[roomCode]},
-        {"type", "participant"},
-        {"votes", allVotes[roomCode][identity]}}
-                     .dump());
+    {
+        lock_guard<mutex> lock(globalStorageMutex);
+        socket->send(json{
+            {"polls", allPolls[roomCode]},
+            {"type", "participant"},
+            {"votes", allVotes[roomCode][identity]}}
+                         .dump());
+    }
 }
 
 Message buildMessageForClient(shared_ptr<ix::WebSocket> ws, const string &roomCode)
@@ -537,19 +572,22 @@ Message buildMessageForClient(shared_ptr<ix::WebSocket> ws, const string &roomCo
     message.socket = ws;
     message.roomCode = roomCode;
 
-    if (cti.type == "host")
     {
-        message.payload = json{
-            {"type", "host"},
-            {"polls", allPolls[roomCode]},
-            {"hostingRoomCode", roomCode}};
-    }
-    else
-    {
-        message.payload = json{
-            {"type", "participant"},
-            {"polls", allPolls[roomCode]},
-            {"votes", allVotes[roomCode][cti.identity]}};
+        lock_guard<mutex> lock(globalStorageMutex);
+        if (cti.type == "host")
+        {
+            message.payload = json{
+                {"type", "host"},
+                {"polls", allPolls[roomCode]},
+                {"hostingRoomCode", roomCode}};
+        }
+        else
+        {
+            message.payload = json{
+                {"type", "participant"},
+                {"polls", allPolls[roomCode]},
+                {"votes", allVotes[roomCode][cti.identity]}};
+        }
     }
 
     return message;
@@ -598,15 +636,18 @@ void registerHandlers()
     {
         string roomCode = msg["roomCode"];
         string identity = msg["identity"];
-        if (roomParticipantMap[roomCode].empty())
         {
-            Message message = buildErrorMessage(ws, "invalid-roomCode", false); // dont retry as the room is wrong
-            message.priority = 0;
-            globalMessageQueue.push_back(message);
-            queueCond.notify_one();
-            return;
+            lock_guard<mutex> lock(globalStorageMutex);
+            if (roomParticipantMap[roomCode].empty())
+            {
+                Message message = buildErrorMessage(ws, "invalid-roomCode", false); // dont retry as the room is wrong
+                message.priority = 0;
+                globalMessageQueue.push_back(message);
+                queueCond.notify_one();
+                return;
+            }
+            roomParticipantMap[roomCode][identity] = identity;
         }
-        roomParticipantMap[roomCode][identity] = identity;
         createParticipantThread(ws, roomCode, identity);
     };
 
@@ -646,39 +687,42 @@ void registerHandlers()
             return;
         }
 
-        auto &polls = allPolls[roomCode];
-        auto it = find_if(polls.begin(), polls.end(), [&](const Poll &p)
-                          { return p.id == poll; });
+        {
+            lock_guard<mutex> lock(globalStorageMutex);
+            auto &polls = allPolls[roomCode];
+            auto it = find_if(polls.begin(), polls.end(), [&](const Poll &p)
+                              { return p.id == poll; });
 
-        if (it == polls.end())
-        {
-            Message message = buildErrorMessage(ws, "invalid-poll-vote", false);
-            message.priority = 0;
-            globalMessageQueue.push_back(message);
-            queueCond.notify_one();
-            return;
-        }
+            if (it == polls.end())
+            {
+                Message message = buildErrorMessage(ws, "invalid-poll-vote", false);
+                message.priority = 0;
+                globalMessageQueue.push_back(message);
+                queueCond.notify_one();
+                return;
+            }
 
-        auto &votes = allVotes[roomCode][identity][poll];
-        votes.votedA = votedA;
-        votes.predictedA = predictedA;
+            auto &votes = allVotes[roomCode][identity][poll];
+            votes.votedA = votedA;
+            votes.predictedA = predictedA;
 
-        if (votedA)
-        {
-            it->votesA++;
-        }
-        else
-        {
-            it->votesB++;
-        }
+            if (votedA)
+            {
+                it->votesA++;
+            }
+            else
+            {
+                it->votesB++;
+            }
 
-        if (predictedA)
-        {
-            it->predictionsA++;
-        }
-        else
-        {
-            it->predictionsB++;
+            if (predictedA)
+            {
+                it->predictionsA++;
+            }
+            else
+            {
+                it->predictionsB++;
+            }
         }
 
         Message message = buildMessageForClient(ws, roomCode);
@@ -721,9 +765,11 @@ void registerHandlers()
         }
 
         string pollId = generateUniquePollID(roomCode);
-        Poll createdPoll = Poll(pollId,question, description, optionA, optionB);
-        allPolls[roomCode].push_back(createdPoll);
-
+        Poll createdPoll = Poll(pollId, question, description, optionA, optionB);
+        {
+            lock_guard<mutex> gLock(globalStorageMutex);
+            allPolls[roomCode].push_back(createdPoll);
+        }
         Message message = buildMessageForClient(ws, roomCode);
         message.priority = 0;
         globalMessageQueue.push_back(message);
@@ -758,22 +804,25 @@ void registerHandlers()
             return;
         }
 
-        auto &polls = allPolls[roomCode];
-        auto it = find_if(polls.begin(), polls.end(), [&](const Poll &poll)
-                          { return poll.id == pollId; });
+        {
+            lock_guard<mutex> gLock(globalStorageMutex);
+            auto &polls = allPolls[roomCode];
+            auto it = find_if(polls.begin(), polls.end(), [&](const Poll &poll)
+                              { return poll.id == pollId; });
 
-        if (it != polls.end())
-        {
-            int index = distance(polls.begin(), it);
-            allPolls[roomCode][index].revealed = true;
-        }
-        else
-        {
-            Message message = buildErrorMessage(ws, "invalid-poll-reveal", true);
-            message.priority = 0;
-            globalMessageQueue.push_back(message);
-            queueCond.notify_one();
-            return;
+            if (it != polls.end())
+            {
+                int index = distance(polls.begin(), it);
+                polls[index].revealed = true;
+            }
+            else
+            {
+                Message message = buildErrorMessage(ws, "invalid-poll-reveal", true);
+                message.priority = 0;
+                globalMessageQueue.push_back(message);
+                queueCond.notify_one();
+                return;
+            }
         }
 
         Message message = buildMessageForClient(ws, roomCode);
@@ -810,33 +859,36 @@ void registerHandlers()
             return;
         }
 
-        auto &polls = allPolls[roomCode];
         bool found = false;
-
-        for (auto it = polls.begin(); it != polls.end();)
         {
-            if (it->id == pollId)
+            lock_guard<mutex> gLock(globalStorageMutex);
+            auto &polls = allPolls[roomCode];
+            for (auto it = polls.begin(); it != polls.end();)
             {
-                it = polls.erase(it);
-                found = true;
+                if (it->id == pollId)
+                {
+                    it = polls.erase(it);
+                    found = true;
+                }
+                else
+                {
+                    ++it;
+                }
             }
-            else
-            {
-                ++it;
-            }
-        }
 
-        if (!found)
-        {
-            Message message = buildErrorMessage(ws, "invalid-poll-delete", true);
-            message.priority = 0;
-            globalMessageQueue.push_back(message);
-            queueCond.notify_one();
-            return;
-        }
-        for (auto &[participant, voteMap] : allVotes[roomCode])
-        {
-            voteMap.erase(pollId);
+            if (!found)
+            {
+                Message message = buildErrorMessage(ws, "invalid-poll-delete", true);
+                message.priority = 0;
+                globalMessageQueue.push_back(message);
+                queueCond.notify_one();
+                return;
+            }
+
+            for (auto &[participant, voteMap] : allVotes[roomCode])
+            {
+                voteMap.erase(pollId);
+            }
         }
 
         Message message = buildMessageForClient(ws, roomCode);
