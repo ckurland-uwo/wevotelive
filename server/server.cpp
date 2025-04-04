@@ -12,9 +12,13 @@
 #include <functional>
 #include <vector>
 #include <deque>
-#include <memory> 
+#include <memory>
 
 #include "json.hpp"
+
+// TODO:
+// check duplicarte ids
+// fix threads
 
 using json = nlohmann::json;
 
@@ -28,6 +32,12 @@ unordered_map<string, chrono::steady_clock::time_point> expiringRooms;
 unordered_map<string, function<void(const json &, shared_ptr<ix::WebSocket>)>> handlers;
 
 unordered_map<string, unordered_map<string, string>> roomParticipantMap;
+
+void print(const string &message)
+{
+    lock_guard<mutex> lock(g_coutMutex);
+    cout << message << endl;
+}
 
 string generateRandomID()
 {
@@ -160,55 +170,52 @@ Message buildErrorMessage(shared_ptr<ix::WebSocket> ws, const string &error, con
 void onMessage(shared_ptr<ix::WebSocket> webSocket, const ix::WebSocketMessagePtr &msg)
 {
     string received;
+    if (msg->type == ix::WebSocketMessageType::Message)
     {
-        lock_guard<mutex> lock(g_coutMutex);
-        if (msg->type == ix::WebSocketMessageType::Message)
+        received = msg->str;
+        auto it = allConnectionThreads.find(webSocket);
+        if (it == allConnectionThreads.end())
         {
-            received = msg->str;
-            auto it = allConnectionThreads.find(webSocket);
-            if (it == allConnectionThreads.end())
+            json message = json::parse(received);
+            print("Received from " + message["identity"].get<string>() + ": " + received);
+        }
+        else
+        {
+            print("Received from " + it->second->identity + ": " + received);
+        }
+    }
+    else if (msg->type == ix::WebSocketMessageType::Open)
+    {
+        print("A client connected!");
+    }
+    else if (msg->type == ix::WebSocketMessageType::Close)
+    {
+        auto it = allConnectionThreads.find(webSocket);
+        if (it == allConnectionThreads.end())
+        {
+            print("A client has disconnected.");
+        }
+        else
+        {
+            string type = it->second->type;
+            if (type == "host")
             {
-                json message = json::parse(received);
-                cout << "Received from " << message["identity"] << ": " << received << endl;
+                print("The host " + it->second->identity + " of room " + it->second->roomCode + " has disconnected.");
+                {
+                    lock_guard<mutex> lock(roomExpiryMutex);
+                    expiringRooms[it->second->roomCode] = chrono::steady_clock::now() + chrono::minutes(1);
+                }
+                print("Room " + it->second->roomCode + " is expiring in 1 minute.");
             }
             else
             {
-                cout << "Received from " << it->second->identity << ": " << received << endl;
+                print("The participant " + it->second->identity + " of room " + it->second->roomCode + " has disconnected.");
             }
         }
-        else if (msg->type == ix::WebSocketMessageType::Open)
-        {
-            cout << "A client connected!" << endl;
-        }
-        else if (msg->type == ix::WebSocketMessageType::Close)
-        {
-            auto it = allConnectionThreads.find(webSocket);
-            if (it == allConnectionThreads.end())
-            {
-                cout << "A client has disconnected." << endl;
-            }
-            else
-            {
-                string type = it->second->type;
-                if (type == "host")
-                {
-                    cout << "The host " << it->second->identity << " of room " << it->second->roomCode << " has disconnected." << endl;
-                    {
-                        lock_guard<mutex> lock(roomExpiryMutex);
-                        expiringRooms[it->second->roomCode] = chrono::steady_clock::now() + chrono::minutes(1);
-                    }
-                    cout << "Room " << it->second->roomCode << " is expiring in 1 minute." << endl;
-                }
-                else
-                {
-                    cout << "The participant " << it->second->identity << " of room " << it->second->roomCode << " has disconnected." << endl;
-                }
-            }
-        }
-        else if (msg->type == ix::WebSocketMessageType::Error)
-        {
-            cout << "Error: " << msg->errorInfo.reason << endl;
-        }
+    }
+    else if (msg->type == ix::WebSocketMessageType::Error)
+    {
+        print("Error: " + msg->errorInfo.reason);
     }
 
     if (msg->type == ix::WebSocketMessageType::Message)
@@ -295,13 +302,11 @@ void createRoomExpiryThread()
                         }
                         catch (const std::exception &e)
                         {
-                            lock_guard<mutex> lock(g_coutMutex);
-                            cout << "[ERROR] Exception while sending room-closed error: " << e.what() << endl;
+                            print("[ERROR] Exception while sending room-closed error: " + string(e.what()));
                         }
                         catch (...)
                         {
-                            lock_guard<mutex> lock(g_coutMutex);
-                            cout << "[ERROR] Unknown exception while sending room-closed error" << endl;
+                            print("[ERROR] Unknown exception while sending room-closed error");
                         }
 
                         if (it->second->threadHandle.joinable())
@@ -323,10 +328,7 @@ void createRoomExpiryThread()
                     continue;
                 expiringRooms.erase(room);
             }
-            {
-                lock_guard<mutex> lock(g_coutMutex);
-                cout << "Room " << room << " has expired and has been deleted." << endl;
-            }
+            print("Room " + room + " has expired and has been deleted.");
         }
     }
 }
@@ -343,7 +345,6 @@ void repairHostThread(shared_ptr<ix::WebSocket> newSocket, ConnectionThreadInfo 
 
     if (oldCTI.threadHandle.joinable())
     {
-        lock_guard<mutex> log(g_coutMutex);
         oldCTI.threadHandle.detach();
     }
 
@@ -360,9 +361,7 @@ void repairHostThread(shared_ptr<ix::WebSocket> newSocket, ConnectionThreadInfo 
 
             cti_ptr->socket->send(msg.payload.dump());
 
-            lock_guard<mutex> log(g_coutMutex);
-            cout << "[Thread] Reconnected host thread for " << cti_ptr->identity
-            << " in room " << cti_ptr->roomCode << endl;
+            print("[Thread] Reconnected host thread for " + cti_ptr->identity + " in room " + cti_ptr->roomCode);
             } });
 
     {
@@ -389,7 +388,7 @@ void createHostThread(shared_ptr<ix::WebSocket> socket, const string &identity)
     if (it != allConnectionThreads.end() && it->second->type == "host")
     {
         auto &threadInfo = *it->second;
-        cout << "Found host in room: " << threadInfo.roomCode << endl;
+        print("Found host in room: " + threadInfo.roomCode);
         repairHostThread(socket, threadInfo);
         return;
     }
@@ -412,14 +411,10 @@ void createHostThread(shared_ptr<ix::WebSocket> socket, const string &identity)
     
             cti_ptr->socket->send(msg.payload.dump());
     
-            lock_guard<mutex> log(g_coutMutex);
-            cout << "[Thread] Sent to " << cti_ptr->identity << " (" << cti_ptr->type << ") in room " << cti_ptr->roomCode << endl;
+            print("[Thread] Sent to " + cti_ptr->identity + " (" + cti_ptr->type + ") in room " + cti_ptr->roomCode);
         } });
     allConnectionThreads[socket] = move(cti);
-    {
-        lock_guard<mutex> logLock(g_coutMutex);
-        cout << "[Thread] Created host thread for " << identity << " in room " << roomCode << endl;
-    }
+    print("[Thread] Created host thread for " + identity + " in room " + roomCode);
 
     socket->send(json{
         {"polls", allPolls[roomCode]},
@@ -435,7 +430,6 @@ void repairParticipantThread(shared_ptr<ix::WebSocket> newSocket, ConnectionThre
 
     if (oldCTI.threadHandle.joinable())
     {
-        lock_guard<mutex> log(g_coutMutex);
         oldCTI.threadHandle.detach();
     }
 
@@ -452,9 +446,7 @@ void repairParticipantThread(shared_ptr<ix::WebSocket> newSocket, ConnectionThre
 
             cti_ptr->socket->send(msg.payload.dump());
 
-            lock_guard<mutex> log(g_coutMutex);
-            cout << "[Thread] Reconnected host thread for " << cti_ptr->identity
-            << " in room " << cti_ptr->roomCode << endl;
+            print("[Thread] Reconnected host thread for " + cti_ptr->identity + " in room " + cti_ptr->roomCode);
             } });
 
     {
@@ -481,7 +473,7 @@ void createParticipantThread(shared_ptr<ix::WebSocket> socket, const string &roo
     if (it != allConnectionThreads.end())
     {
         auto &threadInfo = *it->second;
-        cout << "Found participant in room: " << threadInfo.roomCode << endl;
+        print("Found participant in room: " + threadInfo.roomCode);
         repairParticipantThread(socket, threadInfo);
         return;
     }
@@ -500,14 +492,10 @@ void createParticipantThread(shared_ptr<ix::WebSocket> socket, const string &roo
     
             cti_ptr->socket->send(msg.payload.dump());
     
-            lock_guard<mutex> log(g_coutMutex);
-            cout << "[Thread] Sent to " << cti_ptr->identity << " (" << cti_ptr->type << ") in room " << cti_ptr->roomCode << endl;
+            print("[Thread] Sent to " + cti_ptr->identity + " (" + cti_ptr->type + ") in room " + cti_ptr->roomCode);
         } });
     allConnectionThreads[socket] = move(cti);
-    {
-        lock_guard<mutex> logLock(g_coutMutex);
-        cout << "[Thread] Created participant thread for " << identity << " in room " << roomCode << endl;
-    }
+    print("[Thread] Created participant thread for " + identity + " in room " + roomCode);
 
     socket->send(json{
         {"polls", allPolls[roomCode]},
@@ -849,8 +837,7 @@ int main()
     auto res = server.listen();
     if (!res.first)
     {
-        lock_guard<mutex> lock(g_coutMutex);
-        cerr << "Error starting server: " << res.second << endl;
+        print("Error starting server: " + res.second);
         return 1;
     }
 
@@ -858,10 +845,7 @@ int main()
     server.start();
     thread(dispatcherThreadFunction).detach();
     thread(createRoomExpiryThread).detach();
-    {
-        lock_guard<mutex> lock(g_coutMutex);
-        cout << "WebSocket server started on ws://localhost:8080" << endl;
-    }
+    print("WebSocket server started on ws://localhost:8080");
 
     // keep the server running.
     while (true)
