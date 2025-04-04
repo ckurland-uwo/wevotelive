@@ -70,7 +70,7 @@ export class Communication {
 		}
 		this.#socket.onmessage = (event) => {
 			try {
-				
+				this.#processWorldState(JSON.parse(event.data))
 			} catch (e) {
 				console.error(e)
 				this.#processWorldState({type: "error", error: "CLIENT", retry: false})

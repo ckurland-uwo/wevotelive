@@ -12,6 +12,7 @@ import '$lib/css/global.css'
     import type { UserVote, WorldState } from '$lib/types';
     import { onMount } from 'svelte';
 	import type { PageData } from './$types';
+    import { fade, scale } from 'svelte/transition';
 
 	let { data }: { data: PageData } = $props();
 
@@ -24,6 +25,8 @@ import '$lib/css/global.css'
 	onMount(() => {
 		communication.begin()
 	})
+
+	$inspect(worldState)
 </script>
 
 <main>

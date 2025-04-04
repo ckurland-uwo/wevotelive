@@ -3,6 +3,7 @@
     import type { Poll } from "$lib/types";
     import type { Snippet } from "svelte";
     import SvgPenCircle from "./SvgPenCircle.svelte";
+    import { scale } from "svelte/transition";
 
 
 	const {children, poll, communication}: {
@@ -18,7 +19,9 @@
 	const rotationA = $state(Math.random() * 2 - (2/2))
 </script>
 
-<div class="card-holder" style:transform={`rotate(${rotationA}deg)`}>
+<div class="card-holder" style:transform={`rotate(${rotationA}deg)`}
+	transition:scale
+>
 	<div class="card">
 		<div class="header">
 			<h1>Vote!</h1>
@@ -66,7 +69,9 @@
 			</div>
 
 			<div class="button-wrapper">
-				<button disabled={!vote || !prediction}>Submit</button>
+				<button disabled={!vote || !prediction} onclick={()=>{
+					communication.send({type: "vote", for: poll.id, votedA: vote=="a", predictedA: prediction=="a"})
+				}} >Submit</button>
 			</div>
 		</div>
 	</div>	

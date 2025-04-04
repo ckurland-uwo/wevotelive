@@ -14,7 +14,7 @@ include_directories(${IXWS_PATH})
 if(WIN32)
     set(IXWS_LIB_PATH "${IXWS_PATH}/build-win") # You said you already built it for Windows
 elseif(UNIX)
-    set(IXWS_LIB_PATH "${IXWS_PATH}/build-linux") # You’ll build this next on Ubuntu/WSL
+    set(IXWS_LIB_PATH "${IXWS_PATH}/build") # You’ll build this next on Ubuntu/WSL
 endif()
 
 link_directories(${IXWS_LIB_PATH})
