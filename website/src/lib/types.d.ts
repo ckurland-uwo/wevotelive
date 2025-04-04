@@ -34,7 +34,7 @@ export type WorldState = (
 	) 
 ) | {
 	type: "error"
-	error: "host-vote" | "invalid-poll-vote" | "thread-error" | "participant-poll-creation" | "participant-reveal" | "invalid-poll-reveal" | "participant-poll-delete" | "invalid-poll-delete" | "CLIENT" | "SOCKET"
+	error: "host-vote" | "invalid-poll-vote" | "thread-error" | "participant-poll-creation" | "participant-reveal" | "invalid-poll-reveal" | "participant-poll-delete" | "invalid-poll-delete" | "invalid-roomCode" | "CLIENT" | "SOCKET"
 	retry: boolean
 } | {
 	type: "connecting"

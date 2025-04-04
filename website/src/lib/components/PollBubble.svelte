@@ -1,9 +1,12 @@
 <script lang="ts">
+    import { expandVertically } from "$lib/Transitions";
+    import { scale } from "svelte/transition";
+
 	const {children} = $props()
 </script>
 
 
-<article class="outer">
+<article class="outer" transition:expandVertically={{duration: 300}}>
 	<div class="inner">
 		{@render children()}
 	</div>
@@ -16,7 +19,7 @@
 
 		backdrop-filter: blur(20px);
 
-		/* background-color: hsla(261, 100%, 89%, 0.2); */
+		background-color: rgba(255, 255, 255, 0.488);
 
 		display: grid;
 

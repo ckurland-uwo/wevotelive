@@ -1,6 +1,6 @@
 import type { ServerMessage, WorldState } from "./types";
 
-const ADDRESS = "ws://localhost:8080"
+const ADDRESS = "wss://wevotelive.azurestudios.ca:10556"
 
 export class Communication {
 	#access

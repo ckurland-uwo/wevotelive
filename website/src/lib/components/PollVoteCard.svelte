@@ -4,6 +4,7 @@
     import type { Snippet } from "svelte";
     import SvgPenCircle from "./SvgPenCircle.svelte";
     import { scale } from "svelte/transition";
+    import { expandVertically } from "$lib/Transitions";
 
 
 	const {children, poll, communication}: {
@@ -20,7 +21,7 @@
 </script>
 
 <div class="card-holder" style:transform={`rotate(${rotationA}deg)`}
-	transition:scale
+	transition:expandVertically={{duration: 300}}
 >
 	<div class="card">
 		<div class="header">

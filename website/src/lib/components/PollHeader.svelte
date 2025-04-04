@@ -12,8 +12,8 @@
 
 	const votesPercentA = $derived((poll.votesA/(poll.votesA + poll.votesB))*100)
 	const votesPercentB = $derived((poll.votesB/(poll.votesA + poll.votesB))*100)
-	const votesPercentATruncated = $derived(votesPercentA.toFixed(1))
-	const votesPercentBTruncated = $derived(votesPercentB.toFixed(1))
+	const votesPercentATruncated = $derived(isNaN(votesPercentA) ? 0 : votesPercentA.toFixed(1))
+	const votesPercentBTruncated = $derived(isNaN(votesPercentB) ? 0 : votesPercentB.toFixed(1))
 </script>
 
 <section class:revealed={poll.revealed} style={`--votesA: ${votesPercentA}%; --votesB: ${votesPercentB}%`}>
@@ -101,6 +101,8 @@
 		border: 3px solid black;
 		border-radius: 7px;
 		align-items: center;
+
+		transition: scale 0.5s cubic-bezier(0,1.6,.57,1);
 	}
 	.option-card .option-number {
 		color: white;

@@ -3,6 +3,7 @@
     import type { Poll, UserVote } from "$lib/types";
     import type { Snippet } from "svelte";
     import PollButton from "./PollButton.svelte";
+    import { expandVertically } from "$lib/Transitions";
 
 	const {children, poll, vote}: {
 		children?: Snippet,
@@ -17,7 +18,7 @@
 	const rotationB = $state(Math.random() * 5 - (5/2))
 </script>
 
-<div class="content">
+<div class="content" transition:expandVertically={{duration: 300}} >
 	<section class="you-section">
 		<h1>You</h1>
 		<div class="stuff-grid">

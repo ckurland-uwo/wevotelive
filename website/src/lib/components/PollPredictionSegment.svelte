@@ -26,7 +26,7 @@
 		<div class="predictions">
 			<h1>Predictions</h1>
 			<div class="options-display">
-				<div class="option-card a" style:transform={`rotate(${rotationA}deg)`} class:winner={poll.revealed && poll.predictionsA >= poll.predictionsB}>
+				<div class="option-card a" style:transform={`rotate(${rotationA}deg)`} class:winner={poll.predictionsA >= poll.predictionsB && poll.predictionsA!=0}>
 					<p class="option-number">A</p>
 					<p class="option">{poll.predictionsA}</p>
 					{#if !isNaN(predictionPercentA)}
@@ -36,7 +36,7 @@
 					{/if}
 				</div>
 				<p class="vs">to</p>
-				<div class="option-card b" style:transform={`rotate(${rotationB}deg)`} class:winner={poll.revealed && poll.predictionsA <= poll.predictionsB}>
+				<div class="option-card b" style:transform={`rotate(${rotationB}deg)`} class:winner={poll.predictionsA <= poll.predictionsB && poll.predictionsB!=0}>
 					<p class="option-number">B</p>
 					<p class="option">{poll.predictionsB}</p>
 					{#if !isNaN(predictionPercentB)}
@@ -96,6 +96,8 @@
 		border: 3px solid black;
 		border-radius: 7px;
 		align-items: center;
+
+		transition: scale 0.5s cubic-bezier(0,1.6,.57,1);
 	}
 	.option-card .option-number {
 		color: white;
