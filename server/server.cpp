@@ -489,19 +489,46 @@ void createHostThread(shared_ptr<ix::WebSocket> socket, const string &identity)
         while (true)
         {
             unique_lock<mutex> lock(cti_ptr->personalMutex);
-            cti_ptr->personalCond.wait(lock, [cti_ptr]()
+            bool hasMessage = cti_ptr->personalCond.wait_for(lock, chrono::seconds(20), [cti_ptr]()
             {
                 return !cti_ptr->personalQueue.empty() || !cti_ptr->running;
             });
+
             if (!cti_ptr->running)
                 break;
-
+            if (!hasMessage){
+                lock.unlock();
+                try
+                {
+                    cti_ptr->socket->ping("keepalive");
+                    print("[Thread] Sent keepalive ping to " + cti_ptr->identity + " (" + cti_ptr->type + ") in room " + cti_ptr->roomCode);
+                }
+                catch (const std::exception &e)
+                {
+                    print("[Thread] Failed to send ping: " + string(e.what()));
+                }
+                catch (...)
+                {
+                    print("[Thread] Unknown exception while sending ping.");
+                }
+                continue;
+            }
             auto msg = cti_ptr->personalQueue.front();
             cti_ptr->personalQueue.pop_front();
             lock.unlock();
-
-            cti_ptr->socket->send(msg.payload.dump());
-            print("[Thread] Sent to " + cti_ptr->identity + " (" + cti_ptr->type + ") in room " + cti_ptr->roomCode);
+            try
+            {
+                cti_ptr->socket->send(msg.payload.dump());
+                print("[Thread] Sent to " + cti_ptr->identity + " (" + cti_ptr->type + ") in room " + cti_ptr->roomCode);
+            }
+            catch (const std::exception &e)
+            {
+                print("[Thread] Failed to send message: " + string(e.what()));
+            }
+            catch (...)
+            {
+                print("[Thread] Unknown exception while sending message.");
+            }
         } });
 
     {
@@ -533,18 +560,47 @@ void createParticipantThread(shared_ptr<ix::WebSocket> socket, const string &roo
                                    {
         while (true) {
             unique_lock<mutex> lock(cti_ptr->personalMutex);
-            cti_ptr->personalCond.wait(lock, [cti_ptr]() {
+            bool hasMessage = cti_ptr->personalCond.wait_for(lock, chrono::seconds(20), [cti_ptr]()
+            {
                 return !cti_ptr->personalQueue.empty() || !cti_ptr->running;
             });
+            
             if (!cti_ptr->running)
                 break;
-
+            if (!hasMessage){
+                lock.unlock();
+                try
+                {
+                    cti_ptr->socket->ping("keepalive");
+                    print("[Thread] Sent keepalive ping to " + cti_ptr->identity + " (" + cti_ptr->type + ") in room " + cti_ptr->roomCode);
+                }
+                catch (const std::exception &e)
+                {
+                    print("[Thread] Failed to send ping: " + string(e.what()));
+                }
+                catch (...)
+                {
+                    print("[Thread] Unknown exception while sending ping.");
+                }
+                continue;
+            }
             auto msg = cti_ptr->personalQueue.front();
             cti_ptr->personalQueue.pop_front();
             lock.unlock();
 
-            cti_ptr->socket->send(msg.payload.dump());
-            print("[Thread] Sent to " + cti_ptr->identity + " (" + cti_ptr->type + ") in room " + cti_ptr->roomCode);
+            try
+            {
+                cti_ptr->socket->send(msg.payload.dump());
+                print("[Thread] Sent to " + cti_ptr->identity + " (" + cti_ptr->type + ") in room " + cti_ptr->roomCode);
+            }
+            catch (const std::exception &e)
+            {
+                print("[Thread] Failed to send message: " + string(e.what()));
+            }
+            catch (...)
+            {
+                print("[Thread] Unknown exception while sending message.");
+            }
         } });
 
     {
