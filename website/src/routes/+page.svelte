@@ -28,6 +28,7 @@
 					</a>
 				</div>
 			</div>
+			<p class="codes-info">Room codes are case-sensitive.</p>
 		</GenericSection>
 	</PollBubble>
 </main>
@@ -131,6 +132,16 @@
 
 	a {
 		text-decoration: none;
+	}
+
+
+
+
+	.codes-info {
+		font-size: 0.8em;
+		margin: 0px;
+		margin-top: 5px;
+		opacity: 0.7;
 	}
 </style>
 
